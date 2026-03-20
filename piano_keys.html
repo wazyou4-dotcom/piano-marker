@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Piano Marker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0e0c;
+    --surface: #1a1814;
+    --accent: #c8a96e;
+    --text: #e8e4da;
+    --text-dim: #7a756a;
+    --white-key: #f5f0e8;
+    --white-key-hover: #fffdf8;
+    --black-key: #1e1c18;
+    --black-key-hover: #2e2c28;
+    --mark1: #c8a96e;
+    --mark1-glow: rgba(200,169,110,0.55);
+    --mark2: #5db4d8;
+    --mark2-glow: rgba(93,180,216,0.55);
+    --diatonic-white: #a8e07a;
+    --diatonic-white-hover: #b8ec8a;
+    --diatonic-black: #2e6018;
+    --diatonic-black-hover: #3a7820;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* スマホ: 左右パディングを小さく、セーフエリア対応 */
+    padding: 28px max(12px, env(safe-area-inset-left)) 64px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 100; opacity: 0.6;
+  }
+
+  header { text-align: center; margin-bottom: 24px; width: 100%; }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(22px, 6vw, 44px);
+    font-weight: 400; letter-spacing: 0.06em;
+    color: var(--text); line-height: 1.1;
+  }
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    margin-top: 6px; font-size: 9px;
+    letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase;
+  }
+
+  /* ===== トップコントロール ===== */
+  .top-controls {
+    width: 100%; max-width: 900px;
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    background: var(--surface);
+    border: 1px solid rgba(200,169,110,0.15);
+    border-radius: 12px;
+    padding: 10px 14px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  .panel-title {
+    font-size: 9px; letter-spacing: 0.22em;
+    color: var(--text-dim); text-transform: uppercase;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  .mark-selector { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .mark-choice {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.08);
+    cursor: pointer; font-size: 11px; letter-spacing: 0.04em;
+    transition: all 0.15s; color: var(--text-dim); user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mark-choice.active-1 { border-color: var(--mark1); color: var(--mark1); background: rgba(200,169,110,0.1); }
+  .mark-choice.active-2 { border-color: var(--mark2); color: var(--mark2); background: rgba(93,180,216,0.1); }
+
+  .mark-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .mark-dot-1 { background: var(--mark1); }
+  .mark-dot-2 { background: var(--mark2); }
+
+  .kb-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+
+  .ctrl-btn {
+    background: none; border: 1px solid rgba(200,169,110,0.4);
+    color: var(--accent); font-family: 'DM Mono', monospace;
+    font-size: 18px; width: 34px; height: 34px; border-radius: 50%;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ctrl-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
+  .ctrl-count {
+    font-size: 11px; letter-spacing: 0.1em;
+    color: var(--text-dim); white-space: nowrap; text-align: center;
+  }
+
+  /* ===== ピアノカード ===== */
+  .pianos-wrap {
+    display: flex; flex-direction: column; gap: 20px;
+    width: 100%; max-width: 900px;
+  }
+
+  .piano-card {
+    background: var(--surface);
+    border: 1px solid rgba(200,169,110,0.15);
+    border-radius: 12px;
+    /* スマホ: パディングを左右小さく */
+    padding: 14px 10px 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+    position: relative;
+    animation: cardIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    overflow: hidden;
+  }
+  .piano-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    border-radius: 12px 12px 0 0; opacity: 0.5;
+  }
+
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes cardOut {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.97) translateY(8px); }
+  }
+
+  /* カードヘッダー */
+  .card-header {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 10px; flex-wrap: wrap;
+    padding: 0 2px;
+  }
+
+  .card-label {
+    font-size: 9px; letter-spacing: 0.22em;
+    color: var(--text-dim); text-transform: uppercase;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* カード内キー選択 */
+  .card-key-selector { display: flex; gap: 3px; flex-wrap: wrap; flex: 1; min-width: 0; }
+
+  .card-key-btn {
+    background: none; border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-dim); font-family: 'DM Mono', monospace;
+    font-size: 10px; padding: 3px 6px; border-radius: 4px;
+    cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card-key-btn.active {
+    background: rgba(110,190,60,0.18);
+    border-color: #7bc842; color: #a8e07a;
+  }
+
+  .reset-btn {
+    background: none; border: 1px solid rgba(200,169,110,0.25);
+    color: var(--accent); font-family: 'DM Mono', monospace;
+    font-size: 8px; letter-spacing: 0.12em; padding: 3px 8px; border-radius: 3px;
+    cursor: pointer; text-transform: uppercase; transition: all 0.2s;
+    white-space: nowrap; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ダイアトニック凡例 */
+  .card-legend {
+    display: flex; gap: 3px 4px; flex-wrap: wrap;
+    min-height: 18px; align-items: center;
+    margin-bottom: 10px; padding: 0 2px;
+  }
+
+  .chord-chip {
+    font-size: 9px; letter-spacing: 0.02em;
+    padding: 2px 6px; border-radius: 4px;
+    background: rgba(110,200,60,0.14);
+    color: #a8e07a;
+    border: 1px solid rgba(110,200,60,0.3);
+    animation: chipIn 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .chord-chip .roman { color: rgba(168,224,122,0.5); margin-right: 2px; font-size: 7px; }
+
+  @keyframes chipIn {
+    from { opacity: 0; transform: scale(0.75); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  /* ===== 鍵盤 ===== */
+  .keyboard {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 130px;
+    user-select: none;
+    touch-action: none; /* スクロールと競合しないよう制御 */
+  }
+
+  /* 白鍵 */
+  .white-key {
+    position: relative; flex: 1;
+    min-width: 0; /* flex子要素の縮小を許可 */
+    background: var(--white-key);
+    border: 1px solid #c8c0b0; border-top: none;
+    border-radius: 0 0 4px 4px;
+    cursor: pointer; transition: background 0.12s;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-end;
+    padding-bottom: 6px; gap: 2px; z-index: 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .white-key.diatonic { background: var(--diatonic-white); }
+
+  /* 印ラッパー */
+  .marks-wrap { display: flex; gap: 2px; align-items: center; justify-content: center; }
+  .mark { border-radius: 50%; flex-shrink: 0; transition: all 0.18s cubic-bezier(0.34,1.56,0.64,1); }
+
+  /* 白鍵の印 */
+  .white-key .mark { width: 10px; height: 10px; }
+  .white-key .mark-1 { border: 1.5px solid #b5ada0; background: transparent; }
+  .white-key .mark-2 { border: 1.5px solid #b5ada0; background: transparent; }
+  .white-key.diatonic .mark-1 { border-color: #6aaa40; }
+  .white-key.diatonic .mark-2 { border-color: #6aaa40; }
+
+  .white-key.m1  .mark-1,
+  .white-key.m12 .mark-1 {
+    background: var(--mark1); border-color: var(--mark1);
+    box-shadow: 0 0 6px var(--mark1-glow); transform: scale(1.15);
+  }
+  .white-key.m2  .mark-2,
+  .white-key.m12 .mark-2 {
+    background: var(--mark2); border-color: var(--mark2);
+    box-shadow: 0 0 6px var(--mark2-glow); transform: scale(1.15);
+  }
+
+  .key-name {
+    font-size: 6px; letter-spacing: 0.02em;
+    color: #a09888; font-family: 'DM Mono', monospace; line-height: 1;
+    white-space: nowrap;
+  }
+  .white-key.diatonic .key-name { color: #4a8030; }
+
+  /* 黒鍵オーバーレイ */
+  .black-keys {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 80px; pointer-events: none; z-index: 2;
+  }
+
+  .black-key {
+    position: absolute; height: 100%;
+    background: var(--black-key);
+    border: 1px solid #111; border-top: none;
+    border-radius: 0 0 3px 3px;
+    cursor: pointer; pointer-events: all;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-end;
+    padding-bottom: 4px;
+    transition: background 0.1s;
+    box-shadow: 1px 3px 6px rgba(0,0,0,0.6), inset 0 -2px 3px rgba(0,0,0,0.3);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+  .black-key.diatonic { background: var(--diatonic-black); }
+
+  .black-key .marks-wrap { gap: 2px; }
+  .black-key .mark { width: 7px; height: 7px; }
+  .black-key .mark-1 { border: 1px solid #555; background: transparent; }
+  .black-key .mark-2 { border: 1px solid #555; background: transparent; }
+  .black-key.diatonic .mark-1 { border-color: #5a9a30; }
+  .black-key.diatonic .mark-2 { border-color: #5a9a30; }
+
+  .black-key.m1  .mark-1,
+  .black-key.m12 .mark-1 {
+    background: var(--mark1); border-color: var(--mark1);
+    box-shadow: 0 0 5px var(--mark1-glow); transform: scale(1.2);
+  }
+  .black-key.m2  .mark-2,
+  .black-key.m12 .mark-2 {
+    background: var(--mark2); border-color: var(--mark2);
+    box-shadow: 0 0 5px var(--mark2-glow); transform: scale(1.2);
+  }
+
+  /* チップ行 */
+  .marked-row {
+    margin-top: 10px; display: flex; gap: 4px 5px;
+    flex-wrap: wrap; min-height: 18px; align-items: center;
+    padding: 0 2px;
+  }
+
+  .note-chip {
+    font-size: 9px; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 3px;
+    animation: chipIn 0.18s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .note-chip.chip-1 { background: rgba(200,169,110,0.1); color: var(--mark1); border: 1px solid rgba(200,169,110,0.28); }
+  .note-chip.chip-2 { background: rgba(93,180,216,0.09); color: var(--mark2); border: 1px solid rgba(93,180,216,0.28); }
+
+  /* 長押しヒント */
+  .touch-hint {
+    margin-top: 12px; font-size: 9px;
+    letter-spacing: 0.15em; color: var(--text-dim);
+    text-align: center; text-transform: uppercase;
+  }
+
+  footer {
+    margin-top: 36px; font-size: 9px;
+    letter-spacing: 0.15em; color: var(--text-dim); text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Piano <span>Marker</span></h1>
+  <p class="subtitle">Per-keyboard diatonic · Dual mark system</p>
+</header>
+
+<div class="top-controls">
+  <span class="panel-title">Mark</span>
+  <div class="mark-selector">
+    <div class="mark-choice active-1" id="mc1" onclick="setActiveMark(1)">
+      <div class="mark-dot mark-dot-1"></div><span>1</span>
+    </div>
+    <div class="mark-choice" id="mc2" onclick="setActiveMark(2)">
+      <div class="mark-dot mark-dot-2"></div><span>2</span>
+    </div>
+  </div>
+  <div class="kb-controls">
+    <button class="ctrl-btn" id="btn-remove">−</button>
+    <span class="ctrl-count" id="kb-count">1</span>
+    <button class="ctrl-btn" id="btn-add">+</button>
+  </div>
+</div>
+
+<div class="pianos-wrap" id="pianos"></div>
+
+<p class="touch-hint">Tap: active mark &nbsp;·&nbsp; Long press: other mark</p>
+
+<footer>Piano Marker</footer>
+
+<script>
+const ALL_NOTES   = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const WHITE_NOTES = ['C','D','E','F','G','A','B'];
+const BLACK_MAP   = { 0:'C#', 1:'D#', 3:'F#', 4:'G#', 5:'A#' };
+
+// 黒鍵の中心位置: 左右の白鍵の間を BLACK_POS の比率で内分
+// 0=左白鍵の右端, 1=右白鍵の左端
+const BLACK_POS = { 0: 0.6, 1: 0.5, 3: 0.65, 4: 0.5, 5: 0.45 };
+
+const MAJOR_INTERVALS = [0,2,4,5,7,9,11];
+const ROMAN   = ['I','II','III','IV','V','VI','VII'];
+const QUALITY = ['maj','min','min','maj','maj','min','dim'];
+const KEYS    = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+const START_OCTAVE  = 4;
+const WHITES        = 14;
+const MAX_KEYBOARDS = 8;
+const LONG_PRESS_MS = 400; // 長押し判定ミリ秒
+
+let activeMark    = 1;
+let keyboardCount = 0;
+let totalAdded    = 0;
+
+function getDiatonicPitches(key) {
+  if (!key) return new Set();
+  const root = ALL_NOTES.indexOf(key);
+  return new Set(MAJOR_INTERVALS.map(iv => ALL_NOTES[(root + iv) % 12]));
+}
+
+function setActiveMark(n) {
+  activeMark = n;
+  document.getElementById('mc1').className = 'mark-choice' + (n===1?' active-1':'');
+  document.getElementById('mc2').className = 'mark-choice' + (n===2?' active-2':'');
+}
+
+// ---- タッチ・クリック両対応のイベント設定 ----
+function addKeyEvents(el, onMark1, onMark2) {
+  let timer = null;
+  let fired = false;
+
+  // タッチ: 長押しでMark2、短タップでactiveMark
+  el.addEventListener('touchstart', e => {
+    e.preventDefault();
+    fired = false;
+    timer = setTimeout(() => {
+      fired = true;
+      // 長押し: activeMarkの逆
+      activeMark === 1 ? onMark2() : onMark1();
+    }, LONG_PRESS_MS);
+  }, { passive: false });
+
+  el.addEventListener('touchend', e => {
+    e.preventDefault();
+    clearTimeout(timer);
+    if (!fired) {
+      activeMark === 1 ? onMark1() : onMark2();
+    }
+  }, { passive: false });
+
+  el.addEventListener('touchcancel', () => clearTimeout(timer));
+
+  // マウス: 左クリック=activeMark、右クリック=逆
+  el.addEventListener('click', e => {
+    e.preventDefault();
+    activeMark === 1 ? onMark1() : onMark2();
+  });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    activeMark === 1 ? onMark2() : onMark1();
+  });
+}
+
+// ---- 鍵盤ビルド ----
+function buildKeyboard() {
+  totalAdded++;
+  const idx  = totalAdded;
+  const card = document.createElement('div');
+  card.className = 'piano-card';
+
+  let cardSelectedKey = null;
+
+  // ヘッダー
+  const header = document.createElement('div');
+  header.className = 'card-header';
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'card-label';
+  labelEl.textContent = `Keyboard ${idx}`;
+
+  const keySel = document.createElement('div');
+  keySel.className = 'card-key-selector';
+
+  KEYS.forEach(k => {
+    const btn = document.createElement('button');
+    btn.className = 'card-key-btn';
+    btn.textContent = k.replace('#','♯');
+    btn.dataset.key = k;
+    btn.onclick = () => {
+      if (cardSelectedKey === k) {
+        cardSelectedKey = null;
+        btn.classList.remove('active');
+      } else {
+        cardSelectedKey = k;
+        keySel.querySelectorAll('.card-key-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      applyHighlight();
+      renderLegend();
+    };
+    keySel.appendChild(btn);
+  });
+
+  const markedNotes1 = new Set();
+  const markedNotes2 = new Set();
+
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'reset-btn';
+  resetBtn.textContent = 'Reset';
+  resetBtn.onclick = () => {
+    card.querySelectorAll('[data-pitch]').forEach(k => k.classList.remove('m1','m2','m12'));
+    markedNotes1.clear(); markedNotes2.clear(); renderChips();
+  };
+
+  header.appendChild(labelEl);
+  header.appendChild(keySel);
+  header.appendChild(resetBtn);
+
+  // 凡例
+  const legend = document.createElement('div');
+  legend.className = 'card-legend';
+
+  function renderLegend() {
+    legend.innerHTML = '';
+    if (!cardSelectedKey) return;
+    const root = ALL_NOTES.indexOf(cardSelectedKey);
+    MAJOR_INTERVALS.forEach((iv, i) => {
+      const n = ALL_NOTES[(root + iv) % 12].replace('#','♯');
+      const chip = document.createElement('span');
+      chip.className = 'chord-chip';
+      chip.innerHTML = `<span class="roman">${ROMAN[i]}</span>${n}<sup style="font-size:7px">${QUALITY[i]}</sup>`;
+      legend.appendChild(chip);
+    });
+  }
+
+  // 鍵盤
+  const keyboard = document.createElement('div');
+  keyboard.className = 'keyboard';
+
+  function applyHighlight() {
+    const pitches = getDiatonicPitches(cardSelectedKey);
+    card.querySelectorAll('[data-pitch]').forEach(el => {
+      el.classList.toggle('diatonic', pitches.has(el.dataset.pitch));
+    });
+  }
+
+  const chipsRow = document.createElement('div');
+  chipsRow.className = 'marked-row';
+
+  function sortNotes(set) {
+    return [...set].sort((a, b) => {
+      const parse = n => { const m = n.match(/^([A-G]#?)(\d+)$/); return m ? +m[2]*12 + ALL_NOTES.indexOf(m[1]) : 0; };
+      return parse(a) - parse(b);
+    });
+  }
+
+  function renderChips() {
+    chipsRow.innerHTML = '';
+    sortNotes(markedNotes1).forEach(n => {
+      const c = document.createElement('span');
+      c.className = 'note-chip chip-1';
+      c.textContent = n.replace('#','♯');
+      chipsRow.appendChild(c);
+    });
+    sortNotes(markedNotes2).forEach(n => {
+      const c = document.createElement('span');
+      c.className = 'note-chip chip-2';
+      c.textContent = n.replace('#','♯');
+      chipsRow.appendChild(c);
+    });
+  }
+
+  function handleMark(el, noteName, markNum) {
+    const set = markNum === 1 ? markedNotes1 : markedNotes2;
+    set.has(noteName) ? set.delete(noteName) : set.add(noteName);
+    const n1 = markedNotes1.has(noteName), n2 = markedNotes2.has(noteName);
+    el.classList.remove('m1','m2','m12');
+    if (n1 && n2) el.classList.add('m12');
+    else if (n1)  el.classList.add('m1');
+    else if (n2)  el.classList.add('m2');
+    renderChips();
+  }
+
+  // 白鍵生成
+  for (let i = 0; i < WHITES; i++) {
+    const noteIndex = i % 7;
+    const octaveNum = START_OCTAVE + Math.floor(i / 7);
+    const pitch     = WHITE_NOTES[noteIndex];
+    const noteName  = pitch + octaveNum;
+
+    const key = document.createElement('div');
+    key.className = 'white-key';
+    key.dataset.note  = noteName;
+    key.dataset.pitch = pitch;
+
+    const mw = document.createElement('div'); mw.className = 'marks-wrap';
+    const m1 = document.createElement('div'); m1.className = 'mark mark-1';
+    const m2 = document.createElement('div'); m2.className = 'mark mark-2';
+    mw.appendChild(m1); mw.appendChild(m2);
+
+    const kn = document.createElement('div'); kn.className = 'key-name';
+    kn.textContent = noteName;
+
+    key.appendChild(mw); key.appendChild(kn);
+    addKeyEvents(key,
+      () => handleMark(key, noteName, 1),
+      () => handleMark(key, noteName, 2)
+    );
+    keyboard.appendChild(key);
+  }
+
+  // 黒鍵生成
+  const blackOverlay = document.createElement('div');
+  blackOverlay.className = 'black-keys';
+
+  const blackKeyData = [];
+  for (let i = 0; i < WHITES; i++) {
+    const noteIndex = i % 7;
+    if (!(noteIndex in BLACK_MAP)) continue;
+    const pitch     = BLACK_MAP[noteIndex];
+    const octaveNum = START_OCTAVE + Math.floor(i / 7);
+    const noteName  = pitch + octaveNum;
+
+    const bkey = document.createElement('div');
+    bkey.className = 'black-key';
+    bkey.dataset.note      = noteName;
+    bkey.dataset.pitch     = pitch;
+
+    const mw = document.createElement('div'); mw.className = 'marks-wrap';
+    const m1 = document.createElement('div'); m1.className = 'mark mark-1';
+    const m2 = document.createElement('div'); m2.className = 'mark mark-2';
+    mw.appendChild(m1); mw.appendChild(m2);
+    bkey.appendChild(mw);
+
+    addKeyEvents(bkey,
+      () => handleMark(bkey, noteName, 1),
+      () => handleMark(bkey, noteName, 2)
+    );
+
+    blackOverlay.appendChild(bkey);
+    blackKeyData.push({ el: bkey, whiteIdx: i, noteIndex });
+  }
+
+  // 黒鍵をピクセル精度で配置（ResizeObserver で画面サイズ変化にも追従）
+  function positionBlackKeys() {
+    const whiteKeyEls = keyboard.querySelectorAll('.white-key');
+    if (!whiteKeyEls.length || !whiteKeyEls[0].offsetWidth) return;
+    const bkWidth = whiteKeyEls[0].offsetWidth * 0.6;
+
+    blackKeyData.forEach(({ el, whiteIdx, noteIndex }) => {
+      const lKey = whiteKeyEls[whiteIdx];
+      const rKey = whiteKeyEls[whiteIdx + 1];
+      if (!lKey || !rKey) return;
+      const lRight  = lKey.offsetLeft + lKey.offsetWidth;
+      const rLeft   = rKey.offsetLeft;
+      const center  = lRight + (rLeft - lRight) * BLACK_POS[noteIndex];
+      el.style.left  = (center - bkWidth / 2) + 'px';
+      el.style.width = bkWidth + 'px';
+    });
+  }
+
+  keyboard.appendChild(blackOverlay);
+  card.appendChild(header);
+  card.appendChild(legend);
+  card.appendChild(keyboard);
+  card.appendChild(chipsRow);
+
+  // DOM挿入後に2段階で配置（初回レイアウト確定を確実に待つ）
+  requestAnimationFrame(() => requestAnimationFrame(() => positionBlackKeys()));
+
+  const ro = new ResizeObserver(() => positionBlackKeys());
+  ro.observe(keyboard);
+
+  return card;
+}
+
+// ---- 鍵盤増減 ----
+function updateUI() {
+  const c = keyboardCount;
+  document.getElementById('kb-count').textContent = c;
+  document.getElementById('btn-remove').disabled = c <= 1;
+  document.getElementById('btn-add').disabled    = c >= MAX_KEYBOARDS;
+}
+
+function addKeyboard() {
+  if (keyboardCount >= MAX_KEYBOARDS) return;
+  document.getElementById('pianos').appendChild(buildKeyboard());
+  keyboardCount++; updateUI();
+}
+
+function removeKeyboard() {
+  if (keyboardCount <= 1) return;
+  const pianos = document.getElementById('pianos');
+  const last = pianos.lastElementChild;
+  if (last) { last.style.animation = 'cardOut 0.22s ease forwards'; setTimeout(() => last.remove(), 220); }
+  keyboardCount--; updateUI();
+}
+
+document.getElementById('btn-add').addEventListener('click', addKeyboard);
+document.getElementById('btn-remove').addEventListener('click', removeKeyboard);
+
+addKeyboard();
+</script>
+</body>
+</html>
